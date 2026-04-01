@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Button, Label, Box as GtkBox, Orientation, ListBox, ListBoxRow, ScrolledWindow, DropTarget};
+use gtk4::{Application, ApplicationWindow, Button, Label, Box as GtkBox, Orientation, ListBox, ListBoxRow, ScrolledWindow, DropTarget, Dialog, Entry, ComboBoxText, Calendar, Grid};
 use gtk4::gdk;
 use gtk4::gio;
 use anyhow::Result;
@@ -152,6 +152,132 @@ impl TodoApp {
         row.set_child(Some(&row_box));
         row
     }
+    
+    fn add_todo(&self, item: TodoItem) -> Result<()> {
+        let event = TodoEvent::TodoAdded(item);
+        self.event_store.append_event(&event)?;
+        
+        // Refresh today's items
+        let new_items = self.event_store.get_today_tasks()?;
+        *self.today_items.borrow_mut() = new_items;
+        
+        // Update UI if list_box exists
+        if let Some(list_box) = self.list_box.borrow().as_ref() {
+            // Clear existing rows
+            while let Some(child) = list_box.first_child() {
+                list_box.remove(&child);
+            }
+            self.populate_list(list_box);
+        }
+        
+        Ok(())
+    }
+    
+    fn refresh_list(&self) -> Result<()> {
+        let new_items = self.event_store.get_today_tasks()?;
+        *self.today_items.borrow_mut() = new_items;
+        
+        if let Some(list_box) = self.list_box.borrow().as_ref() {
+            while let Some(child) = list_box.first_child() {
+                list_box.remove(&child);
+            }
+            self.populate_list(list_box);
+        }
+        Ok(())
+    }
+}
+
+fn show_add_todo_dialog(parent: &ApplicationWindow) -> Option<TodoItem> {
+    let dialog = Dialog::new_with_buttons(
+        Some("Add New Todo"),
+        Some(parent),
+        gtk4::DialogFlags::MODAL,
+        &[("Cancel", gtk4::ResponseType::Cancel), ("Add", gtk4::ResponseType::Accept)]
+    );
+    
+    let content_area = dialog.content_area();
+    let grid = Grid::new();
+    grid.set_row_spacing(6);
+    grid.set_column_spacing(12);
+    grid.set_margin_all(12);
+    
+    // Title
+    let title_label = Label::new(Some("Title:"));
+    title_label.set_halign(gtk4::Align::Start);
+    let title_entry = Entry::new();
+    title_entry.set_hexpand(true);
+    grid.attach(&title_label, 0, 0, 1, 1);
+    grid.attach(&title_entry, 1, 0, 2, 1);
+    
+    // Priority
+    let priority_label = Label::new(Some("Priority:"));
+    priority_label.set_halign(gtk4::Align::Start);
+    let priority_combo = ComboBoxText::new();
+    priority_combo.append_text("Low");
+    priority_combo.append_text("Medium");
+    priority_combo.append_text("High");
+    priority_combo.append_text("Critical");
+    priority_combo.set_active(Some(1)); // Default Medium
+    grid.attach(&priority_label, 0, 1, 1, 1);
+    grid.attach(&priority_combo, 1, 1, 2, 1);
+    
+    // Due date (simplified: checkbox for today)
+    let due_label = Label::new(Some("Due today:"));
+    due_label.set_halign(gtk4::Align::Start);
+    let due_checkbox = gtk4::CheckButton::new();
+    grid.attach(&due_label, 0, 2, 1, 1);
+    grid.attach(&due_checkbox, 1, 2, 2, 1);
+    
+    // Source URL (optional)
+    let url_label = Label::new(Some("Source URL:"));
+    url_label.set_halign(gtk4::Align::Start);
+    let url_entry = Entry::new();
+    url_entry.set_placeholder_text(Some("https://..."));
+    grid.attach(&url_label, 0, 3, 1, 1);
+    grid.attach(&url_entry, 1, 3, 2, 1);
+    
+    content_area.append(&grid);
+    
+    dialog.show();
+    
+    let response = dialog.run();
+    let result = if response == gtk4::ResponseType::Accept {
+        let title = title_entry.text().to_string();
+        if title.is_empty() {
+            None
+        } else {
+            let priority = match priority_combo.active_text().as_deref() {
+                Some("Low") => Priority::Low,
+                Some("High") => Priority::High,
+                Some("Critical") => Priority::Critical,
+                _ => Priority::Medium,
+            };
+            
+            let due_date = if due_checkbox.is_active() {
+                Some(Utc::now())
+            } else {
+                None
+            };
+            
+            let source_url = url_entry.text().to_string();
+            let source_url = if source_url.is_empty() { None } else { Some(source_url) };
+            
+            Some(TodoItem::new(
+                title,
+                None, // description
+                priority,
+                due_date,
+                vec![], // stakeholders
+                source_url,
+                vec![], // tags
+            ))
+        }
+    } else {
+        None
+    };
+    
+    dialog.close();
+    result
 }
 
 fn main() -> anyhow::Result<()> {
@@ -159,12 +285,15 @@ fn main() -> anyhow::Result<()> {
         .application_id("com.github.todognome")
         .build();
 
-    let todo_app = TodoApp::new()?;
+    let todo_app = Rc::new(TodoApp::new()?);
     
+    let todo_app_weak = Rc::downgrade(&todo_app);
     app.connect_activate(move |app| {
-        match todo_app.create_ui(app) {
-            Ok(window) => window.present(),
-            Err(e) => eprintln!("Failed to create UI: {}", e),
+        if let Some(todo_app) = todo_app_weak.upgrade() {
+            match todo_app.create_ui(app) {
+                Ok(window) => window.present(),
+                Err(e) => eprintln!("Failed to create UI: {}", e),
+            }
         }
     });
 
