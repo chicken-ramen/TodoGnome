@@ -9,7 +9,7 @@ A GNOME desktop application for managing todo items with event sourcing, toolbar
 - **Drag-and-drop**: Drop links from Teams, email, browsers, etc.
 - **Rich todo items**: Due dates, priorities, stakeholders, tags
 - **Today's tasks view**: Quick access to tasks due today
-- **JSON-backed storage**: Simple file-based event log
+- **SQLite-backed storage**: Events stored in SQLite with materialized views
 
 ## Building
 
@@ -41,9 +41,15 @@ The application uses event sourcing:
 ## Roadmap
 
 - [x] Basic Rust + GTK4 setup
-- [ ] Main window with todo list
-- [ ] Event store implementation
-- [ ] Toolbar status icon
-- [ ] Drag-and-drop support
-- [ ] Today's tasks filtering
-- [ ] Priority and stakeholder management
+- [x] Main window with todo list
+- [x] Event store implementation (SQLite)
+- [x] GNOME Shell extension skeleton
+- [x] Drag-and-drop target
+- [x] Today's tasks filtering
+- [ ] Add todo dialog (in progress)
+- [ ] Checkbox completion
+- [ ] Stakeholder and tag UI
+- [ ] Due date calendar picker
+- [ ] Package for distribution
+
+See [BUILD.md](BUILD.md) for detailed build instructions and next steps.
