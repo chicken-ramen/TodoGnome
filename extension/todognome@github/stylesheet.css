@@ -1,0 +1,17 @@
+.todognome-critical {
+    color: #f66151;
+    font-weight: bold;
+}
+
+.todognome-high {
+    color: #ff7800;
+    font-weight: bold;
+}
+
+.todognome-normal {
+    color: #26a269;
+}
+
+.todognome-indicator {
+    padding: 0 4px;
+}

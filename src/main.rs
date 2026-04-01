@@ -18,6 +18,9 @@ impl TodoApp {
         let event_store = EventStore::new("./data");
         let today_items = event_store.get_today_tasks()?;
         
+        // Write initial status file for GNOME Shell extension
+        let _ = event_store.write_status_file();
+        
         Ok(Self {
             event_store: Rc::new(event_store),
             today_items: RefCell::new(today_items),

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use thiserror::Error;
+use dirs;
 
 #[derive(Error, Debug)]
 pub enum TodoError {
@@ -228,6 +229,9 @@ impl EventStore {
             }
         }
         
+        // Update status file for GNOME Shell extension
+        let _ = self.write_status_file();
+        
         Ok(())
     }
     
@@ -366,5 +370,64 @@ impl EventStore {
             items.push(item_result?);
         }
         Ok(items)
+    }
+    
+    pub fn get_today_counts(&self) -> Result<HashMap<String, i64>> {
+        let conn = self.get_connection()?;
+        let today = Utc::now().date_naive().to_string();
+        let mut stmt = conn.prepare(
+            "SELECT priority, COUNT(*) as count
+             FROM current_state 
+             WHERE date(due_date) = date(?1) AND completed = 0
+             GROUP BY priority"
+        )?;
+        
+        let counts_iter = stmt.query_map(params![today], |row| {
+            let priority: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            Ok((priority, count))
+        })?;
+        
+        let mut counts = HashMap::new();
+        let mut total = 0;
+        for result in counts_iter {
+            let (priority, count) = result?;
+            counts.insert(priority, count);
+            total += count;
+        }
+        counts.insert("total".to_string(), total);
+        
+        // Extract specific priority counts
+        let critical = counts.get("\"Critical\"").copied().unwrap_or(0);
+        let high = counts.get("\"High\"").copied().unwrap_or(0);
+        counts.insert("critical".to_string(), critical);
+        counts.insert("high".to_string(), high);
+        counts.insert("today_count".to_string(), total);
+        
+        Ok(counts)
+    }
+    
+    pub fn write_status_file(&self) -> Result<()> {
+        let counts = self.get_today_counts()?;
+        
+        let cache_dir = dirs::cache_dir()
+            .ok_or_else(|| TodoError::EventStore("Could not determine cache directory".to_string()))?
+            .join("todognome");
+        
+        if !cache_dir.exists() {
+            fs::create_dir_all(&cache_dir)?;
+        }
+        
+        let status_file = cache_dir.join("status.json");
+        let status_data = serde_json::json!({
+            "today_count": counts.get("today_count").unwrap_or(&0),
+            "critical_count": counts.get("critical").unwrap_or(&0),
+            "high_count": counts.get("high").unwrap_or(&0),
+            "updated_at": Utc::now().to_rfc3339(),
+        });
+        
+        let content = serde_json::to_string_pretty(&status_data)?;
+        fs::write(status_file, content)?;
+        Ok(())
     }
 }

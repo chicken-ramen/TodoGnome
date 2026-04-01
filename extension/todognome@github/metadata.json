@@ -1,0 +1,8 @@
+{
+  "uuid": "todognome@github",
+  "name": "TodoGnome",
+  "description": "Quick access to today's tasks from TodoGnome app",
+  "version": 1,
+  "shell-version": ["46", "47", "48"],
+  "url": "https://github.com/chicken-ramen/TodoGnome"
+}
