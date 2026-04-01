@@ -1,6 +1,10 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Button, Label, Box as GtkBox, Orientation, ListBox, ListBoxRow, ScrolledWindow};
-use todognome::{EventStore, TodoItem, Priority, Stakeholder};
+use gtk4::{Application, ApplicationWindow, Button, Label, Box as GtkBox, Orientation, ListBox, ListBoxRow, ScrolledWindow, DropTarget};
+use gtk4::gdk;
+use gtk4::gio;
+use anyhow::Result;
+use chrono::Utc;
+use todognome::{EventStore, TodoItem, Priority, Stakeholder, TodoEvent};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fs;
@@ -8,6 +12,7 @@ use std::fs;
 struct TodoApp {
     event_store: Rc<EventStore>,
     today_items: RefCell<Vec<TodoItem>>,
+    list_box: RefCell<Option<ListBox>>,
 }
 
 impl TodoApp {
@@ -24,6 +29,7 @@ impl TodoApp {
         Ok(Self {
             event_store: Rc::new(event_store),
             today_items: RefCell::new(today_items),
+            list_box: RefCell::new(None),
         })
     }
     
@@ -34,6 +40,34 @@ impl TodoApp {
             .default_width(800)
             .default_height(600)
             .build();
+
+        // Set up drag-and-drop target for URLs from other apps
+        let formats = gdk::ContentFormats::new_for_gtype(glib::types::Type::STRING);
+        let drop_target = DropTarget::new(Some(&formats), gdk::DragAction::COPY);
+        
+        let event_store_weak = Rc::downgrade(&self.event_store);
+        drop_target.connect_drop(move |_, value, _, _| {
+            if let Some(text) = value.get::<String>() {
+                // Extract URLs from dropped text
+                let urls: Vec<String> = text.lines()
+                    .filter(|line| line.starts_with("http://") || line.starts_with("https://"))
+                    .map(|s| s.trim().to_string())
+                    .collect();
+                
+                for url in urls {
+                    println!("Dropped URL: {}", url);
+                    // TODO: Create todo item from URL
+                    if let Some(store) = event_store_weak.upgrade() {
+                        // For now, just print
+                        println!("Would create todo for URL: {}", url);
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        });
+        window.add_controller(&drop_target);
 
         let main_box = GtkBox::new(Orientation::Vertical, 12);
         main_box.set_margin_all(12);
@@ -49,6 +83,9 @@ impl TodoApp {
         let list_box = ListBox::builder()
             .selection_mode(gtk4::SelectionMode::None)
             .build();
+        
+        // Store reference to list box for later updates
+        *self.list_box.borrow_mut() = Some(list_box.clone());
         
         self.populate_list(&list_box);
         
